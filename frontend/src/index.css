@@ -1,0 +1,62 @@
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700;800&family=Rubik:wght@500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    :root {
+        --background: 215 31% 11%;
+        --foreground: 0 0% 98%;
+        --card: 215 30% 16%;
+        --card-foreground: 0 0% 98%;
+        --popover: 215 30% 16%;
+        --popover-foreground: 0 0% 98%;
+        --primary: 69 74% 46%;
+        --primary-foreground: 215 31% 11%;
+        --secondary: 215 22% 22%;
+        --secondary-foreground: 0 0% 98%;
+        --muted: 215 22% 22%;
+        --muted-foreground: 240 5% 65%;
+        --accent: 215 22% 24%;
+        --accent-foreground: 0 0% 98%;
+        --destructive: 0 72% 51%;
+        --destructive-foreground: 0 0% 98%;
+        --border: 215 22% 24%;
+        --input: 215 22% 26%;
+        --ring: 69 74% 46%;
+        --chart-1: 69 74% 46%;
+        --chart-2: 38 92% 50%;
+        --chart-3: 0 0% 98%;
+        --chart-4: 160 84% 39%;
+        --chart-5: 240 5% 65%;
+        --radius: 0.75rem;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+    html { color-scheme: dark; }
+    body {
+        @apply bg-background text-foreground;
+        font-family: "IBM Plex Sans", system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+    }
+    h1, h2, h3, h4, .font-display {
+        font-family: "Bricolage Grotesque", sans-serif;
+    }
+    .font-mono, code {
+        font-family: "JetBrains Mono", monospace;
+        font-variant-numeric: tabular-nums;
+    }
+    ::selection { background: #B0CB1F; color: #141B26; }
+    .font-brand { font-family: "Rubik", sans-serif; }
+}
+
+@layer base {
+    [data-debug-wrapper="true"] {
+        display: contents !important;
+    }
+}
