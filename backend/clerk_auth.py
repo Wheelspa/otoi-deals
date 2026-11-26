@@ -1,6 +1,4 @@
-"""Emergent-managed Clerk auth, inert until CLERK_PUBLISHABLE_KEY/CLERK_SECRET_KEY
-are set: /api/clerk/config for the frontend, the /api/__clerk production relay
-(zero DNS per app), and the require_user dependency for protected routes."""
+"""Clerk auth configuration and JWT verification for FastAPI routes."""
 
 import os
 from functools import lru_cache
@@ -39,9 +37,14 @@ def _secret_key() -> str:
     return os.environ.get("CLERK_SECRET_KEY", "")
 
 
+def _proxy_url() -> str:
+    # Only use a Clerk proxy when explicitly configured via CLERK_PROXY_URL.
+    # For localhost (pk_test_) and separate Vercel+Render with Clerk custom domains, leave empty.
+    return os.environ.get("CLERK_PROXY_URL", "").strip()
+
+
 def _is_production() -> bool:
-    # Only production instances are served through the /api/__clerk proxy.
-    return _publishable_key().startswith("pk_live_")
+    return _publishable_key().startswith("pk_live_") and bool(_proxy_url())
 
 
 def _client_ip(request: Request) -> str:
@@ -58,7 +61,7 @@ def clerk_config():
     return {
         "enabled": bool(key and _secret_key()),
         "publishable_key": key,
-        "proxy_url": PROXY_PATH if _is_production() else "",
+        "proxy_url": _proxy_url(),
     }
 
 
@@ -103,7 +106,7 @@ def _jwks_client(secret_key: str) -> jwt.PyJWKClient:
     return jwt.PyJWKClient(
         f"{CLERK_BACKEND_API}/jwks",
         # Clerk's edge rejects urllib's default User-Agent (Cloudflare 1010).
-        headers={"Authorization": f"Bearer {secret_key}", "User-Agent": "emergent-clerk-auth"},
+        headers={"Authorization": f"Bearer {secret_key}", "User-Agent": "dealwills-clerk-auth"},
         lifespan=3600,
         timeout=10,
     )

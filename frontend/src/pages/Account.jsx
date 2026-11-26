@@ -45,7 +45,7 @@ const Profile = ({ me }) => {
       <p className="text-xs text-zinc-500 font-mono">{me.email}</p>
       <Input data-testid="profile-name-input" placeholder="Full name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} required />
       <Input data-testid="profile-phone-input" placeholder="Mobile number" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} required />
-      <button data-testid="profile-save-btn" className="w-full rounded-full py-2.5 text-sm font-semibold bg-white text-black hover:bg-[#B0CB1F] text-[#141B26] hover: transition-colors">Save</button>
+      <button data-testid="profile-save-btn" className="w-full rounded-full py-2.5 text-sm font-semibold bg-white text-black hover:bg-[#B0CB1F] hover:text-[#141B26] transition-colors">Save</button>
     </form>
   );
 };

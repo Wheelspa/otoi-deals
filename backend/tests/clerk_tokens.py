@@ -1,6 +1,7 @@
 import os, json, urllib.request, sys
+from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv("/app/backend/.env")
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 SK = os.environ["CLERK_SECRET_KEY"]
 
 

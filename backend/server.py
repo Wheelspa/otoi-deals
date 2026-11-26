@@ -165,7 +165,7 @@ def _clerk_profile(user_id: str) -> dict:
     """One Clerk lookup on first sign-in: verified-admin flag, email and name."""
     admins = {e.strip().lower() for e in os.environ.get("ADMIN_EMAIL", "").split(",") if e.strip()}
     r = requests.get(f"https://api.clerk.com/v1/users/{user_id}", timeout=10,
-                     headers={"Authorization": f"Bearer {os.environ['CLERK_SECRET_KEY']}", "User-Agent": "emergent-app"})
+                     headers={"Authorization": f"Bearer {os.environ['CLERK_SECRET_KEY']}", "User-Agent": "dealwills-app"})
     r.raise_for_status()
     data = r.json()
     emails = data.get("email_addresses") or []
@@ -577,7 +577,10 @@ async def get_file(path: str):
     record = await db.files.find_one({"storage_path": path, "is_deleted": False})
     if not record:
         raise HTTPException(404, "File not found")
-    data, ctype = await run_in_threadpool(storage.get_object, path)
+    try:
+        data, ctype = await run_in_threadpool(storage.get_object, path)
+    except FileNotFoundError:
+        raise HTTPException(404, "File not found")
     return Response(content=data, media_type=record.get("content_type") or ctype,
                     headers={"Cache-Control": "public, max-age=86400"})
 
@@ -758,6 +761,15 @@ async def refund_credit(o: dict):
         await db.users.update_one({"user_id": o["user_id"]}, {"$inc": {"referral_credit": amt}})
 
 
+def backend_public_url(request: Request = None) -> str:
+    url = (os.environ.get("BACKEND_PUBLIC_URL") or os.environ.get("RENDER_EXTERNAL_URL") or "").strip().rstrip("/")
+    if url:
+        return url
+    if request is not None:
+        return str(request.base_url).rstrip("/")
+    return ""
+
+
 @api.post("/orders/{oid}/checkout")
 async def checkout(oid: str, body: CheckoutIn, request: Request, member: dict = Depends(current_member)):
     o = await db.orders.find_one({"id": oid, "user_id": member["user_id"], "status": "pending"})
@@ -781,7 +793,9 @@ async def checkout(oid: str, body: CheckoutIn, request: Request, member: dict = 
     await db.orders.update_one({"id": oid}, {"$set": {
         "customer_name": body.customer_name, "phone": body.phone, "address": body.address.model_dump(),
         "coupon_code": code, "coupon_discount": discount, "credit_used": credit, **totals,
-        "payment_method": body.payment_method, "site_origin": request.headers.get("origin", "")}})
+        "payment_method": body.payment_method,
+        "site_origin": request.headers.get("origin", ""),
+        "backend_origin": backend_public_url(request)}})
     if not member.get("phone"):
         await db.users.update_one({"user_id": member["user_id"]},
                                   {"$set": {"phone": body.phone, "name": member.get("name") or body.customer_name}})
@@ -855,7 +869,10 @@ async def handle_payment_event(event: dict):
 
 
 def sign(body: bytes) -> str:
-    return hmac.new(os.environ["PAYMENT_WEBHOOK_SECRET"].encode(), body, hashlib.sha256).hexdigest()
+    secret = os.environ.get("PAYMENT_WEBHOOK_SECRET", "")
+    if not secret:
+        raise HTTPException(503, "Webhook secret is not configured")
+    return hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
 
 
 @api.post("/payments/webhook")
@@ -1179,11 +1196,12 @@ async def ensure_invoice(o: dict) -> dict:
     return res or clean(await db.orders.find_one({"id": o["id"]}))
 
 
-async def send_invoice_whatsapp(o: dict) -> str:
-    origin = o.get("site_origin") or ""
+async def send_invoice_whatsapp(o: dict, request: Request = None) -> str:
+    frontend_base = (os.environ.get("FRONTEND_URL") or o.get("site_origin") or "").strip().rstrip("/")
+    backend_base = (backend_public_url(request) or o.get("backend_origin") or frontend_base).strip().rstrip("/")
     token = o.get("invoice_token")
-    pdf = f"{origin}/api/invoices/{token}/pdf" if origin else ""
-    page = f"{origin}/invoice/{token}" if origin else ""
+    pdf = f"{backend_base}/api/invoices/{token}/pdf" if backend_base else ""
+    page = f"{frontend_base}/invoice/{token}" if frontend_base else ""
     body = (f"Dealwills: Thank you for your order {o['order_number']}! Your GST invoice {o['invoice']['number']} "
             f"for Rs.{o['total']:,.2f} is attached." + (f" View online: {page}" if page else ""))
     status = await run_in_threadpool(send_whatsapp, o["phone"], body, pdf)
@@ -1215,11 +1233,17 @@ async def admin_send_invoice(oid: str, request: Request, _: dict = Depends(admin
     o = await db.orders.find_one({"id": oid, "status": "paid"}, {"_id": 0})
     if not o:
         raise HTTPException(400, "Invoices are only for paid orders")
-    if not o.get("site_origin"):
+    updates = {}
+    if not o.get("site_origin") and request.headers.get("origin"):
         o["site_origin"] = request.headers.get("origin", "")
-        await db.orders.update_one({"id": oid}, {"$set": {"site_origin": o["site_origin"]}})
+        updates["site_origin"] = o["site_origin"]
+    if not o.get("backend_origin"):
+        o["backend_origin"] = backend_public_url(request)
+        updates["backend_origin"] = o["backend_origin"]
+    if updates:
+        await db.orders.update_one({"id": oid}, {"$set": updates})
     o = await ensure_invoice(o)
-    status = await send_invoice_whatsapp(o)
+    status = await send_invoice_whatsapp(o, request)
     return {"invoice_token": o["invoice_token"], "number": o["invoice"]["number"], "whatsapp_status": status}
 
 
@@ -1270,7 +1294,7 @@ async def delete_coupon(cid: str, _: dict = Depends(admin_only)):
 
 def _delete_clerk_user(user_id: str):
     r = requests.delete(f"https://api.clerk.com/v1/users/{user_id}", timeout=10,
-                        headers={"Authorization": f"Bearer {os.environ['CLERK_SECRET_KEY']}", "User-Agent": "emergent-app"})
+                        headers={"Authorization": f"Bearer {os.environ['CLERK_SECRET_KEY']}", "User-Agent": "dealwills-app"})
     if r.status_code not in (200, 404):
         r.raise_for_status()
 
@@ -1298,7 +1322,7 @@ async def erase_all(admin: dict = Depends(admin_only)):
         with suppress(Exception):
             await run_in_threadpool(_delete_clerk_user, c["user_id"])
     counts = {}
-    for name in ("products", "orders", "coupons", "drop_alerts", "contact_messages", "files"):
+    for name in ("products", "orders", "coupons", "drop_alerts", "contact_messages", "files", "file_blobs"):
         counts[name] = (await db[name].delete_many({})).deleted_count
     counts["customers"] = (await db.users.delete_many({"role": {"$ne": "admin"}})).deleted_count
     await db.users.update_many({}, {"$set": {"referral_credit": 0, "referred_by": None, "referral_rewarded": False}})
@@ -1335,22 +1359,23 @@ async def share_deal(request: Request, ref: str = ""):
     """Link-preview page (Open Graph) for WhatsApp; humans are redirected to the deal."""
     p = await db.products.find_one({"status": {"$in": ["live", "paused"]}}) or \
         await db.products.find_one({}, sort=[("closed_at", DESCENDING)])
-    host = (request.headers.get("x-forwarded-host") or request.headers.get("host", "")).split(",")[0].strip()
-    origin = f"https://{host}"
-    target = "/" + (f"?ref={html.escape(re.sub(r'[^A-Za-z0-9]', '', ref))}" if ref else "")
+    backend_origin = backend_public_url(request)
+    frontend_origin = (os.environ.get("FRONTEND_URL") or "").strip().rstrip("/")
+    ref_q = f"?ref={html.escape(re.sub(r'[^A-Za-z0-9]', '', ref))}" if ref else ""
+    target = (frontend_origin + "/" + ref_q) if frontend_origin else ("/" + ref_q)
     title, desc, image = "Dealwills — Timely delivery always", "One product. One price. Limited opportunity.", ""
     if p:
         d = public_product(p)
         title = f"{d['name']} at ₹{d['current_price']:,.0f} ({d['discount_percent']}% OFF) — Dealwills"
         desc = f"Only {d['remaining']} of {d['total_qty']} units left at the special Dealwills price. Was ₹{d['original_price']:,.0f}."
         image = (d["images"] or [""])[0]
-        if image.startswith("/"):
-            image = origin + image
+        if image.startswith("/") and backend_origin:
+            image = backend_origin + image
     e = html.escape
     page = f"""<!doctype html><html><head><meta charset="utf-8"><title>{e(title)}</title>
 <meta property="og:type" content="product"><meta property="og:site_name" content="Dealwills">
 <meta property="og:title" content="{e(title)}"><meta property="og:description" content="{e(desc)}">
-<meta property="og:image" content="{e(image)}"><meta property="og:url" content="{e(origin + target)}">
+<meta property="og:image" content="{e(image)}"><meta property="og:url" content="{e(target)}">
 <meta name="twitter:card" content="summary_large_image">
 <meta http-equiv="refresh" content="0;url={e(target)}"></head>
 <body><a href="{e(target)}">View today's Dealwills deal</a></body></html>"""
@@ -1413,10 +1438,11 @@ async def seed():
 app.include_router(api)
 app.include_router(clerk_router)
 
+_cors_origins = [o.strip().rstrip("/") for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=_cors_origins or ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )

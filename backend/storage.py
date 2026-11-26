@@ -1,37 +1,49 @@
 import os
+from datetime import datetime, timezone
 
-import requests
+from bson.binary import Binary
+from pymongo import ASCENDING, MongoClient
 
-STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
-STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
 APP_NAME = "otoi"
-storage_key = None
+_client = None
+_collection = None
+
+
+def _get_collection():
+    global _client, _collection
+    if _collection is None:
+        _client = MongoClient(os.environ["MONGO_URL"])
+        _collection = _client[os.environ["DB_NAME"]]["file_blobs"]
+    return _collection
 
 
 def init_storage(force: bool = False):
-    global storage_key
-    if storage_key and not force:
-        return storage_key
-    resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": os.environ.get("EMERGENT_LLM_KEY")}, timeout=30)
-    resp.raise_for_status()
-    storage_key = resp.json()["storage_key"]
-    return storage_key
+    col = _get_collection()
+    col.create_index([("path", ASCENDING)], unique=True, name="path")
+    return "mongodb"
 
 
 def put_object(path: str, data: bytes, content_type: str) -> dict:
-    key = init_storage()
-    resp = requests.put(f"{STORAGE_URL}/objects/{path}",
-                        headers={"X-Storage-Key": key, "Content-Type": content_type}, data=data, timeout=120)
-    if resp.status_code == 404:
-        key = init_storage(force=True)
-        resp = requests.put(f"{STORAGE_URL}/objects/{path}",
-                            headers={"X-Storage-Key": key, "Content-Type": content_type}, data=data, timeout=120)
-    resp.raise_for_status()
-    return resp.json()
+    col = _get_collection()
+    col.update_one(
+        {"path": path},
+        {
+            "$set": {
+                "path": path,
+                "data": Binary(data),
+                "content_type": content_type or "application/octet-stream",
+                "size": len(data),
+                "created_at": datetime.now(timezone.utc),
+            }
+        },
+        upsert=True,
+    )
+    return {"path": path, "size": len(data)}
 
 
 def get_object(path: str) -> tuple[bytes, str]:
-    key = init_storage()
-    resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
-    resp.raise_for_status()
-    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+    col = _get_collection()
+    doc = col.find_one({"path": path}, {"_id": 0, "data": 1, "content_type": 1})
+    if not doc:
+        raise FileNotFoundError(path)
+    return bytes(doc["data"]), doc.get("content_type", "application/octet-stream")

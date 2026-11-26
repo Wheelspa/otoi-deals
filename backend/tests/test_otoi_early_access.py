@@ -3,9 +3,12 @@
 import json
 import os
 import subprocess
+import sys
+import tempfile
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 import requests
@@ -15,10 +18,10 @@ from pymongo import MongoClient
 from conftest import API
 from test_otoi_core import checkout_body
 
-load_dotenv("/app/backend/.env")
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 DB = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
 STATE = {"products": [], "alert_phones": []}
-TOK = "/tmp/ea_toks.json"
+TOK = str(Path(tempfile.gettempdir()) / "ea_toks.json")
 EA_USERS = ["ea1", "ea2", "ea3", "admin"]
 SUB_PHONE = "9000000201"   # ea1 subscribes; profile phone stored with +91 prefix
 NONSUB_PHONE = "9000000202"  # ea2 profile phone, not subscribed
@@ -28,7 +31,7 @@ SUB2_PHONE = "9000000203"  # subscribes later for the auto-advance drop
 @pytest.fixture(scope="module")
 def S():
     if not os.path.exists(TOK) or time.time() - os.path.getmtime(TOK) > 3000:
-        out = subprocess.check_output(["python", "/app/backend/tests/clerk_tokens.py",
+        out = subprocess.check_output([sys.executable, str(Path(__file__).resolve().parent / "clerk_tokens.py"),
                                        *[f"{e}+clerk_test@otoi.in" for e in EA_USERS]])
         open(TOK, "w").write(out.decode())
     data = json.load(open(TOK))

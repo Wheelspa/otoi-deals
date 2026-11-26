@@ -1,11 +1,12 @@
 # Restores seed products (Acoustic One live, Chrono/Titan queued) after engine tests; closes TEST_ products.
 import asyncio
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
 
-load_dotenv("/app/backend/.env")
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 
 async def main():

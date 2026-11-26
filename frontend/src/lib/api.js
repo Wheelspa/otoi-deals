@@ -3,7 +3,7 @@ import axios from "axios";
 import { useAuth } from "@clerk/react";
 import { useQuery } from "@tanstack/react-query";
 
-export const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+export const BACKEND_URL = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/+$/, "");
 export const API = `${BACKEND_URL}/api`;
 export const publicApi = axios.create({ baseURL: API });
 

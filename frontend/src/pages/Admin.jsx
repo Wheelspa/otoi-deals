@@ -46,7 +46,7 @@ export default function Admin() {
         <TabsList className="bg-[#1C2635] border border-[#2A3647] h-auto flex-wrap justify-start">
           {TABS.map(([k, l]) => (
             <TabsTrigger key={k} value={k} data-testid={`admin-tab-${k}`}
-              className="data-[state=active]:bg-[#B0CB1F] text-[#141B26] data-[state=active]:">{l}</TabsTrigger>
+              className="data-[state=active]:bg-[#B0CB1F] data-[state=active]:text-[#141B26]">{l}</TabsTrigger>
           ))}
         </TabsList>
         {TABS.map(([k, , C]) => (

@@ -56,7 +56,7 @@ export default function Header() {
         <div className="flex items-center gap-3">
           <Show when="signed-out">
             <Link to="/sign-in" data-testid="nav-login-btn"
-              className="text-sm font-semibold px-4 py-2 rounded-full bg-white text-black hover:bg-[#B0CB1F] text-[#141B26] hover: transition-colors">
+              className="text-sm font-semibold px-4 py-2 rounded-full bg-white text-black hover:bg-[#B0CB1F] hover:text-[#141B26] transition-colors">
               Login / Register
             </Link>
           </Show>

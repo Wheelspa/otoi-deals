@@ -2,11 +2,12 @@
 # removes drop_alerts for the TEST phones, sets Acoustic One live, Chrono/Titan queued (drop_number 0, Titan start_at null).
 import os
 import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
 from pymongo import MongoClient
 
-load_dotenv("/app/backend/.env")
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 db = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
 names = sys.argv[1:]
 TEST_PHONES = ["9000000201", "9000000202", "9000000203", "9000000204", "9000000205"]

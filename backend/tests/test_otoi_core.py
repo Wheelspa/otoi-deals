@@ -8,11 +8,12 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 import requests
+from pathlib import Path
 from dotenv import load_dotenv
 
 from conftest import API
 
-load_dotenv("/app/backend/.env")
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 SECRET = os.environ["PAYMENT_WEBHOOK_SECRET"]
 ADDR = {"line1": "TEST 12 Street", "line2": "", "city": "Pune", "state": "MH", "pincode": "411001"}
 
